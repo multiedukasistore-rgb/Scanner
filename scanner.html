@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BRILink PJSP - Scanner QR</title>
+  
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- jsQR Library -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: #0f172a;
+      color: #ffffff;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .scanner-header {
+      height: 54px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      background: rgba(15, 23, 42, 0.95);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      z-index: 50;
+    }
+
+    .brand-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-action-header {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .btn-action-header:active {
+      transform: scale(0.92);
+    }
+
+    .camera-container {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      background: #000000;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #liveVideo {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .target-box {
+      position: absolute;
+      width: 240px;
+      height: 240px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .corner {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-color: #38bdf8;
+      border-style: solid;
+      filter: drop-shadow(0 0 6px #0284c7);
+    }
+
+    .c-tl { top: 0; left: 0; border-width: 4px 0 0 4px; border-top-left-radius: 12px; }
+    .c-tr { top: 0; right: 0; border-width: 4px 4px 0 0; border-top-right-radius: 12px; }
+    .c-bl { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-bottom-left-radius: 12px; }
+    .c-br { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-bottom-right-radius: 12px; }
+
+    .laser-beam {
+      position: absolute;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #38bdf8 20%, #38bdf8 80%, transparent);
+      box-shadow: 0 0 12px #38bdf8;
+      animation: scanAnim 2.2s infinite ease-in-out;
+    }
+
+    @keyframes scanAnim {
+      0% { top: 4px; opacity: 0.3; }
+      50% { opacity: 1; }
+      100% { top: calc(100% - 6px); opacity: 0.3; }
+    }
+
+    .instruction-label {
+      position: absolute;
+      bottom: 24px;
+      left: 20px;
+      right: 20px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 10px 16px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      z-index: 25;
+    }
+
+    .status-toast {
+      position: fixed;
+      top: 68px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #10b981;
+      color: #ffffff;
+      padding: 8px 18px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 800;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header Pemindai -->
+  <div class="scanner-header">
+    <div class="brand-title">
+      <i class="fa-solid fa-qrcode"></i> BRILink Scanner
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-action-header" id="btnTorch" onclick="toggleTorch()" title="Senter">
+        <i class="fa-solid fa-bolt"></i>
+      </button>
+      <button class="btn-action-header" onclick="switchCameraFacing()" title="Putar Kamera">
+        <i class="fa-solid fa-camera-rotate"></i>
+      </button>
+      <button class="btn-action-header" onclick="window.close()" title="Tutup">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="camera-container">
+    <video id="liveVideo" autoplay playsinline webkit-playsinline muted></video>
+    <canvas id="procCanvas" style="display:none;"></canvas>
+
+    <div class="target-box">
+      <div class="corner c-tl"></div>
+      <div class="corner c-tr"></div>
+      <div class="corner c-bl"></div>
+      <div class="corner c-br"></div>
+      <div class="laser-beam"></div>
+    </div>
+
+    <div class="instruction-label" id="instructionText">
+      Arahkan kamera ke QR ID Pelanggan
+    </div>
+  </div>
+
+  <div class="status-toast" id="toastMessage">QR Berhasil Terbaca!</div>
+
+  <script>
+    var currentStream = null;
+    var scanLoopId = null;
+    var currentFacing = 'environment';
+    var isFlashOn = false;
+    var isScanned = false;
+
+    window.onload = function() {
+      startCamera();
+    };
+
+    window.onbeforeunload = function() {
+      stopCamera();
+    };
+
+    async function startCamera() {
+      stopCamera();
+      var video = document.getElementById('liveVideo');
+      var constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: currentFacing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = currentStream;
+        video.onloadedmetadata = function() {
+          video.play();
+          startScanning(video);
+        };
+      } catch (err) {
+        // Fallback jika ideal facingMode gagal
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+          video.srcObject = currentStream;
+          video.play();
+          startScanning(video);
+        } catch (e) {
+          document.getElementById('instructionText').innerText = 'Izin kamera ditolak atau tidak ditemukan.';
+        }
+      }
+    }
+
+    function stopCamera() {
+      if (scanLoopId) {
+        cancelAnimationFrame(scanLoopId);
+        scanLoopId = null;
+      }
+      if (currentStream) {
+        currentStream.getTracks().forEach(function(t) { t.stop(); });
+        currentStream = null;
+      }
+    }
+
+    function switchCameraFacing() {
+      currentFacing = (currentFacing === 'environment') ? 'user' : 'environment';
+      startCamera();
+    }
+
+    function toggleTorch() {
+      if (!currentStream) return;
+      var track = currentStream.getVideoTracks()[0];
+      if (track && track.applyConstraints) {
+        isFlashOn = !isFlashOn;
+        track.applyConstraints({ advanced: [{ torch: isFlashOn }] })
+          .then(function() {
+            document.getElementById('btnTorch').style.color = isFlashOn ? '#f59e0b' : '#ffffff';
+          })
+          .catch(function() {});
+      }
+    }
+
+    function startScanning(video) {
+      var canvas = document.getElementById('procCanvas');
+      var ctx = canvas.getContext('2d', { willReadFrequently: true });
+      var detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+
+      async function loop() {
+        if (isScanned) return;
+
+        if (video.readyState >= video.HAVE_CURRENT_DATA) {
+          if (detector) {
+            try {
+              var barcodes = await detector.detect(video);
+              if (barcodes.length > 0 && barcodes[0].rawValue) {
+                onDetectSuccess(barcodes[0].rawValue);
+                return;
+              }
+            } catch(e) {}
+          }
+
+          if (typeof jsQR !== 'undefined') {
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            var qr = jsQR(imgData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+            if (qr && qr.data) {
+              onDetectSuccess(qr.data);
+              return;
+            }
+          }
+        }
+        scanLoopId = requestAnimationFrame(loop);
+      }
+      scanLoopId = requestAnimationFrame(loop);
+    }
+
+    function onDetectSuccess(decodedText) {
+      if (isScanned) return;
+      isScanned = true;
+
+      document.getElementById('toastMessage').style.display = 'block';
+      document.getElementById('instructionText').innerText = 'Berhasil! Mengirim data ke Kasir...';
+
+      // Kirim hasil pindaian ke jendela utama Apps Script
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          source: 'BRILINK_QR_SCANNER',
+          code: decodedText
+        }, '*');
+      }
+
+      // Berikan jeda 600ms lalu tutup popup secara otomatis
+      setTimeout(function() {
+        stopCamera();
+        window.close();
+      }, 600);
+    }
+  </script>
+</body>
+</html>
